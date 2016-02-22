@@ -17,7 +17,7 @@ def main():
     while True:
         for bot_id, bot in [('1', bot1), ('2', bot2)]:
             # Wait for any key
-            raw_input()
+            #raw_input()
             # Send inputs to bot
             move = send_update(bot, round_num, move, field, macroboard)
             # Update macroboard and game field
@@ -85,6 +85,12 @@ def send_update(bot, round_num, move, field, macroboard):
     bot.stdin.write(update_input)
     out = bot.stdout.readline().strip()
     print 'bot output: ' + repr(out)
+    if "Traceback" in out:
+        t = bot.stdout.readline().strip()
+        while t:
+            print t
+            t = bot.stdout.readline().strip()
+        print "DONE"
     return out
 
 
