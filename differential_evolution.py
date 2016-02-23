@@ -1,11 +1,56 @@
 import os
 import sys
 from subprocess import Popen, PIPE, STDOUT
-
+import cPickle as pickle
+import numpy as np
+import re
 
 def main():
+    weights_folder = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'weights')
+    ensure_folder_exists(weights_folder)
+    generation = find_greatest_generation(weights_folder)
+    pop_size = 200
+    if generation == -1: #initialize population
+        print 'Generating starting population of size %d' % (pop_size)
+        for i in range(pop_size):
+            weights_file = 'gen000id%03d.pkl' % (i)
+            with open(os.path.join(weights_folder, weights_file), 'wb') as f:
+                pickle.dump(gen_weights(), f)
+        generation = 0
+
+    scores = np.zeros(pop_size)
+    for botid in range(pop_size):
+        weights_file = 'gen%03did%03d.pkl' % (generation, botid)
+        for i in range(25):
+            scores[botid] += sim_game(bot1_opts=os.path.join(weights_folder, weights_file))
+        print 'bot %03d\t\tcumulative_score: %d' % (botid, scores[botid])
+
+def find_greatest_generation(weights_folder):
+    starting_generation = -1
+    for folder, file in file_list(weights_folder):
+        match = re.match(r'gen(?P<generation>\d+)id(?P<id>\d+).pkl', file)
+        if match:
+            starting_generation = max(starting_generation, int(match.group('generation')))
+    return starting_generation
+
+def ensure_folder_exists(folder):
+    if not os.path.exists(folder):
+        os.mkdir(folder)
+
+def file_list(folder):
+    return [(folder, filename) for filename in os.listdir(folder)]
+
+def gen_weights():
+    sigma = .1
+    conv_layer_output_size = 5
+    weights = {}
+    weights['conv_weights'] = np.random.randn(9*3, conv_layer_output_size) * sigma
+    weights['score_weights'] = np.random.randn(conv_layer_output_size*9+9, 1) * sigma
+    return weights
+        
+def sim_game(bot1_name='rollout_bot', bot1_opts='', bot2_name='random_bot', bot2_opts=''):
     # Get robots who are fighting (player1, player2)
-    bot1, bot2 = get_bots()
+    bot1, bot2 = get_bots(bot1_name=bot1_name, bot1_opts=bot1_opts, bot2_name=bot2_name, bot2_opts=bot2_opts)
     # Simulate game init input
     send_init('1', bot1)
     send_init('2', bot2)
@@ -13,7 +58,7 @@ def main():
     move = 1
     field = ','.join(['0'] * 81)
     macroboard = ','.join(['-1'] * 9)
-    print_board(field, macroboard, round_num, '')
+    #print_board(field, macroboard, round_num, '')
     while True:
         for bot_id, bot in [('1', bot1), ('2', bot2)]:
             # Wait for any key
@@ -24,14 +69,15 @@ def main():
             field = update_field(field, move, str(bot_id))
             macroboard = update_macroboard(field, move)
             # Check for winner. If winner, exit.
-            print_board(field, macroboard, round_num, move)
+            #print_board(field, macroboard, round_num, move)
             if is_winner(macroboard):
-                return
+                bot1.kill()
+                bot2.kill()
+                return get_winner(macroboard)
 
             round_num += 1
 
-
-def get_bots():
+def get_bots(bot1_name=None, bot1_opts='', bot2_name=None, bot2_opts=''):
     root = os.path.dirname(os.path.realpath(__file__))
     files = os.listdir(root)
     bots = [f for f in files
@@ -39,18 +85,19 @@ def get_bots():
 
     bot_list = '\n'.join(
         ['{}. {}'.format(i, bot) for i, bot in enumerate(bots)])
+    if not bot1_name:
+        bot1_name = bots[int(raw_input(
+            'Choose Player 1:\n' + bot_list + '\n\n> '))]
+    if not bot2_name:
+        bot2_name = bots[int(raw_input(
+            'Choose Player 2:\n' + bot_list + '\n\n> '))]
 
-    bot1_name = bots[int(raw_input(
-        'Choose Player 1:\n' + bot_list + '\n\n> '))]
-    bot2_name = bots[int(raw_input(
-        'Choose Player 2:\n' + bot_list + '\n\n> '))]
-
-    bot1 = Popen(['python', 'main.py'],
+    bot1 = Popen(['python', 'main.py', bot1_opts],
                  cwd=os.path.join(root, bot1_name),
                  stdout=PIPE,
                  stdin=PIPE,
                  stderr=STDOUT)
-    bot2 = Popen(['python', 'main.py'],
+    bot2 = Popen(['python', 'main.py', bot2_opts],
                  cwd=os.path.join(root, bot2_name),
                  stdout=PIPE,
                  stdin=PIPE,
@@ -84,7 +131,7 @@ def send_update(bot, round_num, move, field, macroboard):
 
     bot.stdin.write(update_input)
     out = bot.stdout.readline().strip()
-    print 'bot output: ' + repr(out)
+    #print 'bot output: ' + repr(out)
     if "Traceback" in out:
         t = bot.stdout.readline().strip()
         while t:
@@ -207,12 +254,34 @@ def is_winner(macroboard):
     for opt in winopts:
         val = m[opt[0]] + m[opt[1]] + m[opt[2]]
         if val in winners:
-            print 'WINNER! Player {}'.format(m[opt[0]])
+            #print 'WINNER! Player {}'.format(m[opt[0]])
             return True
     if '-1' not in m:
-        print 'TIE!'
+        #print 'TIE!'
         return True
 
+    return False
+
+def get_winner(macroboard):
+    winopts = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [6, 4, 2]]
+
+    m = macroboard.split(',')
+    winners = ('111', '222')
+    scores = (0, 1, -1)
+    for opt in winopts:
+        val = m[opt[0]] + m[opt[1]] + m[opt[2]]
+        if val in winners:
+            return scores[int(m[opt[0]])]
+    if '-1' not in m:
+        return scores[0]
     return False
 
 

@@ -1,27 +1,19 @@
 import numpy as np
 from random import randint
 from copy import deepcopy
+import cPickle as pickle
 
 class RolloutBot:
+    def __init__(self, weights_file=None):
+        if weights_file:
+             with open(weights_file, 'rb') as f:
+                weights = pickle.load(f)
+                self.conv_weights = weights['conv_weights']
+                self.score_weights = weights['score_weights']
+        else:
+            self.init_weights()
     
     def get_move(self, pos, tleft):
-        # with open('temp.txt', 'w') as f:
-        #     f.write('BOARD:\n')
-        #     f.write(str(type(pos.board)))
-        #     f.write(str(pos.board))
-        #     f.write('\nMACROBOARD:\n')
-        #     f.write(str(type(pos.macroboard)))
-        #     f.write(str(pos.macroboard))
-        #     f.write('\n')
-        #     for move in pos.legal_moves():
-        #         f.write(str(move))
-        #         f.write('\n')
-        #         new_pos = deepcopy(pos)
-        #         new_pos.make_move(move[0], move[1], self.myid)
-        #         f.write(str(new_pos.board))
-        #         f.write('\n')
-        #         f.write(str(self.score_output(new_pos)))
-        #         f.write('\n')
         best_move = None
         best_move_score = np.NINF
         for move in pos.legal_moves():
@@ -33,14 +25,32 @@ class RolloutBot:
                 best_move = move
         if best_move:
             return best_move
+        with open('temp.txt', 'w') as f:
+            f.write('BOARD:\n')
+            f.write(str(type(pos.board)))
+            f.write(str(pos.board))
+            f.write('\nMACROBOARD:\n')
+            f.write(str(type(pos.macroboard)))
+            f.write(str(pos.macroboard))
+            f.write('\n')
+            for move in pos.legal_moves():
+                f.write(str(move))
+                f.write('\n')
+                new_pos = deepcopy(pos)
+                new_pos.make_move(move[0], move[1], self.myid)
+                f.write(str(new_pos.board))
+                f.write('\n')
+                f.write(str(self.score_output(new_pos)))
+                f.write('\n')
         lmoves = pos.legal_moves()
         rm = randint(0, len(lmoves)-1)
         return lmoves[rm]
 
     def init_weights(self):
+        sigma = .1
         conv_layer_output_size = 5
-        self.conv_weights = np.random.rand(9*3, conv_layer_output_size)
-        self.score_weights = np.random.rand(conv_layer_output_size*9+9, 1)
+        self.conv_weights = np.random.randn(9*3, conv_layer_output_size) * sigma
+        self.score_weights = np.random.randn(conv_layer_output_size*9+9, 1) * sigma
 
     def calc_board_vec(self, pos):
         npboard = np.array(pos.board)

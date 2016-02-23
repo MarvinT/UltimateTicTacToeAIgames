@@ -16,7 +16,6 @@ def parse_command(instr, bot, pos):
         myid = int(instr.split(' ')[-1])
         bot.myid = myid
         bot.oppid = 1 if myid == 2 else 2
-        bot.init_weights()
     elif instr.startswith('settings timebank'): 
         bot.timebank = int(instr.split(' ')[-1])
     elif instr.startswith('settings time_per_move'): 
@@ -27,9 +26,14 @@ if __name__ == '__main__':
     import sys
     from position import Position
     from rolloutbot import RolloutBot
+    import argparse
+
+    parser = argparse.ArgumentParser(description='run RolloutBot')
+    parser.add_argument('weights_file', nargs='?', default=None, help='pkl file containing weights')
+    args = parser.parse_args()
 
     pos = Position()
-    bot = RolloutBot()
+    bot = RolloutBot(weights_file=args.weights_file)
     
     while True:
         try:
@@ -38,5 +42,4 @@ if __name__ == '__main__':
             sys.stderr.write('error reading input')
         outstr = parse_command(instr, bot, pos)
         sys.stdout.write(outstr)
-        sys.stdout.flush()            
-            
+        sys.stdout.flush()
