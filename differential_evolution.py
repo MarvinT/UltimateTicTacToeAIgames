@@ -5,6 +5,8 @@ import cPickle as pickle
 import numpy as np
 import re
 
+weight_template = 'gen%03did%03d.pkl'
+
 def main():
     weights_folder = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'weights')
     ensure_folder_exists(weights_folder)
@@ -12,18 +14,57 @@ def main():
     pop_size = 200
     if generation == -1: #initialize population
         print 'Generating starting population of size %d' % (pop_size)
+        generation = 0
         for i in range(pop_size):
-            weights_file = 'gen000id%03d.pkl' % (i)
+            weights_file = weight_template % (generation, i)
             with open(os.path.join(weights_folder, weights_file), 'wb') as f:
                 pickle.dump(gen_weights(), f)
-        generation = 0
 
     scores = np.zeros(pop_size)
     for botid in range(pop_size):
-        weights_file = 'gen%03did%03d.pkl' % (generation, botid)
-        for i in range(25):
+        weights_file = weight_template % (generation, botid)
+        for i in range(50):
             scores[botid] += sim_game(bot1_opts=os.path.join(weights_folder, weights_file))
-        print 'bot %03d\t\tcumulative_score: %d' % (botid, scores[botid])
+        print 'generation %03d\t\tbot %03d\t\tcumulative_score: %d' % (generation, botid, scores[botid])
+
+    fitness = np.maximum(0, scores)
+    fitness -= np.min(fitness)
+    fitness /= np.sum(fitness)
+
+    generation += 1
+    new_pop = np.random.choice(pop_size, pop_size, p=fitness)
+    # need more checks here to make sure population hasn't been decimated
+    assert len(np.unique(new_pop)) > 5, 'only %d unique individuals selected for the next generation' % (len(np.unique(new_pop)))
+
+    F = 1.0  # differntial weight [0, 2]
+    CR = .5 # crossover probability [0, 1]
+
+    for botid in range(pop_size):
+        x = new_pop[botid]
+        a = np.random.choice(new_pop)
+        while x==a:
+            a = np.random.choice(new_pop)
+        b = np.random.choice(new_pop)
+        while x==b or a==b:
+            b = np.random.choice(new_pop)
+        c = np.random.choice(new_pop)
+        while x==c or a==c or b==c:
+            c = np.random.choice(new_pop)
+        with open(os.path.join(weights_folder, weight_template % (generation-1, x)), 'rb') as f:
+            weights = pickle.load(f)
+        with open(os.path.join(weights_folder, weight_template % (generation-1, a)), 'rb') as f:
+            a_weights = pickle.load(f)
+        with open(os.path.join(weights_folder, weight_template % (generation-1, b)), 'rb') as f:
+            b_weights = pickle.load(f)
+        with open(os.path.join(weights_folder, weight_template % (generation-1, c)), 'rb') as f:
+            c_weights = pickle.load(f)
+
+        weights_filter = np.random.rand(*weights['conv_weights'].shape) > CR
+        weights['conv_weights'][weights_filter] = a_weights['conv_weights'][weights_filter] + F * (b_weights['conv_weights'][weights_filter] - c_weights['conv_weights'][weights_filter])
+        weights_filter = np.random.rand(*weights['score_weights'].shape) > CR
+        weights['score_weights'][weights_filter] = a_weights['score_weights'][weights_filter] + F * (b_weights['score_weights'][weights_filter] - c_weights['score_weights'][weights_filter])
+        with open(os.path.join(weights_folder, weight_template % (generation, botid)), 'wb') as f:
+            pickle.dump(weights, f)
 
 def find_greatest_generation(weights_folder):
     starting_generation = -1
